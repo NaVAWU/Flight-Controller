@@ -5,9 +5,21 @@
 //  Start: bun run index.ts
 //  Env:   FC_TOKEN  — shared secret (required)
 //         PORT      — listen port   (default 8080)
+//
+//  Console commands (type while running):
+//    list
+//    set <island> altitude <meters>
+//    shutdown <island>
+//    help
+//
+//  REST commands (require Authorization: Bearer <FC_TOKEN>):
+//    POST /islands/:id/altitude   body: { "target": 250 }
+//    POST /islands/:id/shutdown
 // ============================================================
 
-import { Database } from "bun:sqlite";
+import { Database }  from "bun:sqlite";
+import type { ServerWebSocket } from "bun";
+import readline from "readline";
 
 // ── Config ───────────────────────────────────────────────────
 
@@ -19,11 +31,17 @@ const PORT = Number(process.env.PORT ?? 8080);
 // ── Logging ──────────────────────────────────────────────────
 
 function ts() {
-  return new Date().toLocaleTimeString("en-GB"); // HH:MM:SS
+  return new Date().toLocaleTimeString("en-GB");
 }
 
-function log(tag: "WS" | "AUTH" | "HTTP" | "ERR", msg: string) {
-  const color = { WS: "\x1b[36m", AUTH: "\x1b[33m", HTTP: "\x1b[90m", ERR: "\x1b[31m" }[tag];
+function log(tag: "WS" | "AUTH" | "HTTP" | "CMD" | "ERR", msg: string) {
+  const color = {
+    WS:   "\x1b[36m",
+    AUTH: "\x1b[33m",
+    HTTP: "\x1b[90m",
+    CMD:  "\x1b[32m",
+    ERR:  "\x1b[31m",
+  }[tag];
   console.log(`${ts()}  ${color}${tag.padEnd(4)}\x1b[0m  ${msg}`);
 }
 
@@ -79,7 +97,7 @@ const stmtHist = db.prepare(`
   SELECT * FROM status_log WHERE island_id = $id ORDER BY ts DESC LIMIT $limit
 `);
 
-// ── WebSocket connection state ────────────────────────────────
+// ── Connection registry ───────────────────────────────────────
 
 type WSData = {
   ip:       string;
@@ -87,7 +105,50 @@ type WSData = {
   lastMode: string | null;
 };
 
-// ── Status handler ───────────────────────────────────────────
+const connections = new Map<string, ServerWebSocket<WSData>>();
+
+// ── Command dispatch (server → island) ───────────────────────
+
+function sendToIsland(islandId: string, cmd: object): "ok" | "offline" {
+  const ws = connections.get(islandId);
+  if (!ws) return "offline";
+  ws.send(JSON.stringify(cmd));
+  return "ok";
+}
+
+function cmdSetAltitude(islandId: string, target: number): "ok" | "offline" | "invalid" {
+  if (!Number.isFinite(target)) return "invalid";
+  if (islandId === "all") {
+    if (connections.size === 0) return "offline";
+    for (const id of connections.keys()) sendToIsland(id, { cmd: "SET_ALTITUDE", target });
+    log("CMD", `SET_ALTITUDE ${target}m → all (${connections.size} island(s))`);
+    return "ok";
+  }
+  const result = sendToIsland(islandId, { cmd: "SET_ALTITUDE", target });
+  if (result === "ok") log("CMD", `SET_ALTITUDE ${target}m → ${islandId}`);
+  return result;
+}
+
+function cmdShutdown(islandId: string): "ok" | "offline" {
+  if (islandId === "all") {
+    if (connections.size === 0) return "offline";
+    for (const id of connections.keys()) sendToIsland(id, { cmd: "SHUTDOWN" });
+    log("CMD", `SHUTDOWN → all (${connections.size} island(s))`);
+    return "ok";
+  }
+  const result = sendToIsland(islandId, { cmd: "SHUTDOWN" });
+  if (result === "ok") log("CMD", `SHUTDOWN → ${islandId}`);
+  return result;
+}
+
+// ── Auth helper for write endpoints ──────────────────────────
+
+function isAuthorized(req: Request): boolean {
+  const auth = req.headers.get("authorization") ?? "";
+  return auth.startsWith("Bearer ") && auth.slice(7) === TOKEN;
+}
+
+// ── Status handler (island → server) ─────────────────────────
 
 interface StatusMsg {
   type:      "status";
@@ -99,19 +160,18 @@ interface StatusMsg {
   pressure?: number;
 }
 
-function handleStatus(ws: { data: WSData }, msg: StatusMsg): string | null {
+function handleStatus(ws: ServerWebSocket<WSData>, msg: StatusMsg): string | null {
   if (typeof msg.island !== "string" || !msg.island) return "Missing island field";
 
   const { data } = ws;
   const isNew = data.islandId === null;
 
-  // First message from this connection — log identification
   if (isNew) {
     data.islandId = msg.island;
+    connections.set(msg.island, ws);
     log("WS", `${msg.island} (${data.ip}) — identified`);
   }
 
-  // Log mode changes
   if (msg.mode && msg.mode !== data.lastMode) {
     if (!isNew) {
       log("WS", `${msg.island} — ${data.lastMode ?? "?"} → ${msg.mode}  (alt: ${msg.altitude?.toFixed(1) ?? "?"}m, target: ${msg.target ?? "?"}m)`);
@@ -119,7 +179,7 @@ function handleStatus(ws: { data: WSData }, msg: StatusMsg): string | null {
     data.lastMode = msg.mode;
   }
 
-  const params = {
+  stmtUpsert.run({
     $id:     msg.island,
     $ts:     Date.now(),
     $alt:    msg.altitude ?? null,
@@ -127,10 +187,17 @@ function handleStatus(ws: { data: WSData }, msg: StatusMsg): string | null {
     $vel:    msg.velocity ?? null,
     $mode:   msg.mode     ?? null,
     $pres:   msg.pressure ?? null,
-  };
+  });
+  stmtLog.run({
+    $id:     msg.island,
+    $ts:     Date.now(),
+    $alt:    msg.altitude ?? null,
+    $target: msg.target   ?? null,
+    $vel:    msg.velocity ?? null,
+    $mode:   msg.mode     ?? null,
+    $pres:   msg.pressure ?? null,
+  });
 
-  stmtUpsert.run(params);
-  stmtLog.run(params);
   return null;
 }
 
@@ -139,12 +206,13 @@ function handleStatus(ws: { data: WSData }, msg: StatusMsg): string | null {
 const server = Bun.serve<WSData>({
   port: PORT,
 
-  fetch(req, server) {
-    const url  = new URL(req.url);
-    const path = url.pathname;
-    const ip   = req.headers.get("x-forwarded-for") ?? "unknown";
+  async fetch(req, server) {
+    const url    = new URL(req.url);
+    const path   = url.pathname;
+    const ip     = req.headers.get("x-forwarded-for") ?? "unknown";
+    const method = req.method;
 
-    // WebSocket upgrade — auth via Bearer token in header
+    // ── WebSocket upgrade ──
     if (path === "/ws") {
       const auth  = req.headers.get("authorization") ?? "";
       const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -156,27 +224,57 @@ const server = Bun.serve<WSData>({
       return ok ? undefined : new Response("WebSocket upgrade failed", { status: 500 });
     }
 
-    // REST endpoints
-    log("HTTP", `${req.method} ${path} — ${ip}`);
+    // ── Read-only REST ──
+    if (method === "GET") {
+      log("HTTP", `GET ${path} — ${ip}`);
 
-    if (path === "/islands" && req.method === "GET") {
-      return Response.json(stmtAll.all());
-    }
-
-    const match = path.match(/^\/islands\/([^/]+)(\/history)?$/);
-    if (match && req.method === "GET") {
-      const id      = match[1];
-      const history = !!match[2];
-
-      if (history) {
-        const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 1000);
-        return Response.json(stmtHist.all({ $id: id, $limit: limit }));
+      if (path === "/islands") {
+        return Response.json(stmtAll.all());
       }
 
-      const row = stmtOne.get({ $id: id });
-      return row
-        ? Response.json(row)
-        : new Response("Island not found", { status: 404 });
+      const m = path.match(/^\/islands\/([^/]+)(\/history)?$/);
+      if (m) {
+        const id = m[1];
+        if (m[2]) {
+          const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 1000);
+          return Response.json(stmtHist.all({ $id: id, $limit: limit }));
+        }
+        const row = stmtOne.get({ $id: id });
+        return row ? Response.json(row) : new Response("Island not found", { status: 404 });
+      }
+    }
+
+    // ── Write REST (require auth) ──
+    if (method === "POST") {
+      if (!isAuthorized(req)) {
+        log("AUTH", `${ip} — rejected POST ${path} (bad token)`);
+        return new Response("Unauthorized", { status: 401 });
+      }
+
+      log("HTTP", `POST ${path} — ${ip}`);
+
+      // POST /islands/:id/altitude   { "target": 250 }
+      const altMatch = path.match(/^\/islands\/([^/]+)\/altitude$/);
+      if (altMatch) {
+        const id   = altMatch[1];
+        const body = await req.json().catch(() => null);
+        if (typeof body?.target !== "number") {
+          return new Response('Body must be { "target": <number> }', { status: 400 });
+        }
+        const result = cmdSetAltitude(id, body.target);
+        if (result === "offline") return new Response("Island not connected", { status: 503 });
+        if (result === "invalid") return new Response("Invalid target value", { status: 400 });
+        return new Response("OK");
+      }
+
+      // POST /islands/:id/shutdown
+      const shutMatch = path.match(/^\/islands\/([^/]+)\/shutdown$/);
+      if (shutMatch) {
+        const id     = shutMatch[1];
+        const result = cmdShutdown(id);
+        if (result === "offline") return new Response("Island not connected", { status: 503 });
+        return new Response("OK");
+      }
     }
 
     return new Response("Not found", { status: 404 });
@@ -213,13 +311,69 @@ const server = Bun.serve<WSData>({
     },
 
     close(ws) {
-      const label = ws.data.islandId
-        ? `${ws.data.islandId} (${ws.data.ip})`
-        : ws.data.ip;
-      log("WS", `${label} — disconnected`);
+      const { islandId, ip } = ws.data;
+      if (islandId) connections.delete(islandId);
+      log("WS", `${islandId ? `${islandId} (${ip})` : ip} — disconnected`);
     },
   },
 });
 
+// ── Console input ─────────────────────────────────────────────
+
+function printHelp() {
+  console.log("  list                          — show connected islands");
+  console.log("  set <island|all> altitude <n> — change target altitude");
+  console.log("  shutdown <island|all>         — send shutdown command");
+  console.log("  help                          — show this message");
+}
+
+function handleConsoleInput(line: string) {
+  const parts = line.trim().split(/\s+/);
+  const cmd   = parts[0]?.toLowerCase();
+
+  if (!cmd) return;
+
+  if (cmd === "help") {
+    printHelp();
+    return;
+  }
+
+  if (cmd === "list") {
+    if (connections.size === 0) {
+      console.log("  No islands connected.");
+    } else {
+      for (const id of connections.keys()) console.log(`  • ${id}`);
+    }
+    return;
+  }
+
+  if (cmd === "set" && parts[2] === "altitude") {
+    const id     = parts[1];
+    const target = Number(parts[3]);
+    if (!id || isNaN(target)) { console.log("  Usage: set <island> altitude <n>"); return; }
+    const result = cmdSetAltitude(id, target);
+    if (result === "offline") console.log(`  ${id} is not connected.`);
+    return;
+  }
+
+  if (cmd === "shutdown") {
+    const id = parts[1];
+    if (!id) { console.log("  Usage: shutdown <island>"); return; }
+    const result = cmdShutdown(id);
+    if (result === "offline") console.log(`  ${id} is not connected.`);
+    return;
+  }
+
+  console.log(`  Unknown command: ${cmd}  (type "help" for commands)`);
+}
+
+const rl = readline.createInterface({ input: process.stdin, terminal: false });
+rl.on("line", handleConsoleInput);
+
+// ── Startup ───────────────────────────────────────────────────
+
 log("WS",   `Listening on port ${server.port}`);
 log("HTTP", `Islands: http://localhost:${server.port}/islands`);
+console.log("");
+printHelp();
+console.log("");

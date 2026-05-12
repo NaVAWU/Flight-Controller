@@ -33,6 +33,9 @@ local controller = PID.new(
 -- Networking (passes PID so SET_ALTITUDE can reset it)
 Network.init(controller)
 
+-- Telemetry (passes PID so hub SET_ALTITUDE can reset it)
+Telemetry.init(controller)
+
 -- ── HELPERS ──────────────────────────────────────────────────
 
 local function clamp(v, lo, hi)
@@ -118,8 +121,7 @@ local function telemetryLoop()
     if not Config.HUB_URL then return end
     print("[TEL] Telemetry loop started.")
     while State.running do
-        Telemetry.send(State)
-        sleep(1)
+        Telemetry.tick(State)
     end
     Telemetry.close()
     print("[TEL] Telemetry loop stopped.")
