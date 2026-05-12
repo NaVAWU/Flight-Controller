@@ -45,10 +45,11 @@ local function logStatus()
     local s = math.floor(os.clock())
     if s == _lastLogSecond then return end
     _lastLogSecond = s
-    print(("[%s] Alt: %.1fm | Target: %dm | Mode: %s"):format(
+    print(("[%s] Alt: %.1fm | Target: %dm | Vel: %+.2fm/s | Mode: %s"):format(
         Config.ISLAND_ID,
         State.currentAltitude,
         State.targetAltitude,
+        State.currentVelocity,
         State.mode))
 end
 
@@ -64,7 +65,8 @@ local function flightLoop()
         lastTime  = now
 
         -- Read sensors
-        State.currentAltitude = Sensors.getHeight()
+        State.currentAltitude  = Sensors.getHeight()
+        State.currentVelocity  = Sensors.getVerticalVelocity()
         local error  = State.targetAltitude - State.currentAltitude
         local absErr = math.abs(error)
 
@@ -77,15 +79,17 @@ local function flightLoop()
             State.mode = "DESCENT"
         end
 
+        -- Velocity cap: stop driving if already moving fast enough in the right direction
+        local velCapped = (error > 0 and State.currentVelocity >=  Config.MAX_SPEED)
+                       or (error < 0 and State.currentVelocity <= -Config.MAX_SPEED)
+
         -- Compute and apply motor command
-        if absErr <= Config.HOLD_DEADBAND then
+        if absErr <= Config.HOLD_DEADBAND or velCapped then
             Motor.stop()
-            State.currentVelocity = 0
         else
             local raw     = controller:update(error, dt)
-            local desired = clamp(raw, -Config.MAX_SPEED, Config.MAX_SPEED)
+            local desired = clamp(raw, -256, 256)
             Motor.setSpeed(desired, State)
-            State.currentVelocity = desired
         end
 
         logStatus()

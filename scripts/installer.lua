@@ -178,13 +178,11 @@ if configIsNew and configTemplate then
 
     -- Peripheral sides
     print("")
-    local motorSide  = askSide("Motor side   (electric_motor)",         findSide("motor")    or "left")
-    local rscSide    = askSide("RSC side     (RotationSpeedController)", findSide("speed")    or "right")
-    local sensorSide = askSide("Sensor side  (altitude_sensor)",        findSide("altitude") or "back")
-    local modemSide  = askSideOrNone("Modem side   (modem, or 'none')", findSide("modem")    or "top")
+    local motorSide  = askSide("Motor side   (electric_motor)",  findSide("motor")    or "left")
+    local sensorSide = askSide("Sensor side  (altitude_sensor)", findSide("altitude") or "back")
+    local modemSide  = askSideOrNone("Modem side   (modem, or 'none')", findSide("modem") or "top")
 
     configTemplate = patchConfig(configTemplate, "SIDE_MOTOR",  '"' .. motorSide  .. '"')
-    configTemplate = patchConfig(configTemplate, "SIDE_RSC",    '"' .. rscSide    .. '"')
     configTemplate = patchConfig(configTemplate, "SIDE_SENSOR", '"' .. sensorSide .. '"')
     configTemplate = patchConfig(configTemplate, "SIDE_MODEM",
         modemSide == "none" and "nil" or ('"' .. modemSide .. '"'))

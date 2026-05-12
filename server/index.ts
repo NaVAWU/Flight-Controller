@@ -16,6 +16,17 @@ if (!TOKEN) throw new Error("FC_TOKEN environment variable is required.");
 
 const PORT = Number(process.env.PORT ?? 8080);
 
+// ── Logging ──────────────────────────────────────────────────
+
+function ts() {
+  return new Date().toLocaleTimeString("en-GB"); // HH:MM:SS
+}
+
+function log(tag: "WS" | "AUTH" | "HTTP" | "ERR", msg: string) {
+  const color = { WS: "\x1b[36m", AUTH: "\x1b[33m", HTTP: "\x1b[90m", ERR: "\x1b[31m" }[tag];
+  console.log(`${ts()}  ${color}${tag.padEnd(4)}\x1b[0m  ${msg}`);
+}
+
 // ── Database ─────────────────────────────────────────────────
 
 const db = new Database("islands.db");
@@ -68,20 +79,45 @@ const stmtHist = db.prepare(`
   SELECT * FROM status_log WHERE island_id = $id ORDER BY ts DESC LIMIT $limit
 `);
 
+// ── WebSocket connection state ────────────────────────────────
+
+type WSData = {
+  ip:       string;
+  islandId: string | null;
+  lastMode: string | null;
+};
+
 // ── Status handler ───────────────────────────────────────────
 
 interface StatusMsg {
-  type: "status";
-  island: string;
+  type:      "status";
+  island:    string;
   altitude?: number;
-  target?: number;
+  target?:   number;
   velocity?: number;
-  mode?: string;
+  mode?:     string;
   pressure?: number;
 }
 
-function handleStatus(msg: StatusMsg): string | null {
+function handleStatus(ws: { data: WSData }, msg: StatusMsg): string | null {
   if (typeof msg.island !== "string" || !msg.island) return "Missing island field";
+
+  const { data } = ws;
+  const isNew = data.islandId === null;
+
+  // First message from this connection — log identification
+  if (isNew) {
+    data.islandId = msg.island;
+    log("WS", `${msg.island} (${data.ip}) — identified`);
+  }
+
+  // Log mode changes
+  if (msg.mode && msg.mode !== data.lastMode) {
+    if (!isNew) {
+      log("WS", `${msg.island} — ${data.lastMode ?? "?"} → ${msg.mode}  (alt: ${msg.altitude?.toFixed(1) ?? "?"}m, target: ${msg.target ?? "?"}m)`);
+    }
+    data.lastMode = msg.mode;
+  }
 
   const params = {
     $id:     msg.island,
@@ -100,30 +136,33 @@ function handleStatus(msg: StatusMsg): string | null {
 
 // ── Server ───────────────────────────────────────────────────
 
-const server = Bun.serve({
+const server = Bun.serve<WSData>({
   port: PORT,
 
   fetch(req, server) {
     const url  = new URL(req.url);
     const path = url.pathname;
+    const ip   = req.headers.get("x-forwarded-for") ?? "unknown";
 
     // WebSocket upgrade — auth via Bearer token in header
     if (path === "/ws") {
       const auth  = req.headers.get("authorization") ?? "";
       const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
       if (token !== TOKEN) {
+        log("AUTH", `${ip} — rejected (bad token)`);
         return new Response("Unauthorized", { status: 401 });
       }
-      const ok = server.upgrade(req);
+      const ok = server.upgrade(req, { data: { ip, islandId: null, lastMode: null } });
       return ok ? undefined : new Response("WebSocket upgrade failed", { status: 500 });
     }
 
-    // REST: GET /islands
+    // REST endpoints
+    log("HTTP", `${req.method} ${path} — ${ip}`);
+
     if (path === "/islands" && req.method === "GET") {
       return Response.json(stmtAll.all());
     }
 
-    // REST: GET /islands/:id  and  GET /islands/:id/history?limit=N
     const match = path.match(/^\/islands\/([^/]+)(\/history)?$/);
     if (match && req.method === "GET") {
       const id      = match[1];
@@ -145,7 +184,7 @@ const server = Bun.serve({
 
   websocket: {
     open(ws) {
-      console.log("[WS] Island connected");
+      log("WS", `${ws.data.ip} — connected`);
     },
 
     message(ws, raw) {
@@ -153,17 +192,20 @@ const server = Bun.serve({
       try {
         msg = JSON.parse(typeof raw === "string" ? raw : raw.toString());
       } catch {
+        log("ERR", `${ws.data.islandId ?? ws.data.ip} — invalid JSON`);
         ws.send(JSON.stringify({ ok: false, error: "Invalid JSON" }));
         return;
       }
 
       if (msg.type !== "status") {
+        log("ERR", `${ws.data.islandId ?? ws.data.ip} — unknown type "${msg.type}"`);
         ws.send(JSON.stringify({ ok: false, error: `Unknown type: ${msg.type}` }));
         return;
       }
 
-      const err = handleStatus(msg as StatusMsg);
+      const err = handleStatus(ws, msg as StatusMsg);
       if (err) {
+        log("ERR", `${ws.data.islandId ?? ws.data.ip} — ${err}`);
         ws.send(JSON.stringify({ ok: false, error: err }));
       } else {
         ws.send(JSON.stringify({ ok: true }));
@@ -171,11 +213,13 @@ const server = Bun.serve({
     },
 
     close(ws) {
-      console.log("[WS] Island disconnected");
+      const label = ws.data.islandId
+        ? `${ws.data.islandId} (${ws.data.ip})`
+        : ws.data.ip;
+      log("WS", `${label} — disconnected`);
     },
   },
 });
 
-console.log(`[Hub] Listening on port ${server.port}`);
-console.log(`[Hub] WebSocket : ws://localhost:${server.port}/ws`);
-console.log(`[Hub] Islands   : http://localhost:${server.port}/islands`);
+log("WS",   `Listening on port ${server.port}`);
+log("HTTP", `Islands: http://localhost:${server.port}/islands`);

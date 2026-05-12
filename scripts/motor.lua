@@ -1,7 +1,7 @@
 -- ============================================================
 --  motor.lua
---  Abstraction for the electric_motor + Create_RotationSpeedController.
---  All speed values passed in are m/s; conversion to RPM happens here.
+--  Abstraction for the Create electric_motor peripheral.
+--  Speed is set directly on the motor in the range -256..256.
 -- ============================================================
 
 local Config  = require("config")
@@ -10,34 +10,24 @@ local Sensors = require("sensors")
 local Motor = {}
 
 local _motor = nil
-local _rsc   = nil
 
--- Initialise and validate both peripherals
 function Motor.init()
     _motor = peripheral.wrap(Config.SIDE_MOTOR)
-    _rsc   = peripheral.wrap(Config.SIDE_RSC)
-    assert(_motor, "No electric_motor found on side: "   .. Config.SIDE_MOTOR)
-    assert(_rsc,   "No RotationSpeedController found on: " .. Config.SIDE_RSC)
-    print("[Motor] electric_motor + RSC online.")
+    assert(_motor, "No electric_motor found on side: " .. Config.SIDE_MOTOR)
+    print("[Motor] electric_motor online.")
 end
 
--- Set motor to a desired velocity in m/s.
--- Applies pressure feedforward so commands mean the same thing at any altitude.
-function Motor.setSpeed(mps, state)
+-- Set motor speed. Applies pressure feedforward and clamps to -256..256.
+function Motor.setSpeed(speed, state)
     local compensation = Sensors.pressureCompensation(state)
-    local rpm = mps
-              * compensation
-              * Config.RPM_SCALE
-              * Config.MOTOR_DIRECTION
-
-    _rsc.setTargetSpeed(rpm)
-    _motor.rotate()
+    local out = speed * compensation * Config.MOTOR_DIRECTION
+    out = math.max(-256, math.min(256, out))
+    _motor.setSpeed(out)
 end
 
--- Bring the motor to a safe stop
+-- Bring the motor to a stop
 function Motor.stop()
-    _rsc.setTargetSpeed(0)
-    _motor.stop()
+    _motor.setSpeed(0)
 end
 
 return Motor

@@ -35,6 +35,13 @@ function Sensors.calibrate(state)
     print(("[Sensors] Calibrated sea-level pressure: %.4f"):format(pressure))
 end
 
+-- Returns the island's vertical velocity in m/s (positive = upward).
+-- Uses the sublevel API from CC: Sable. Returns 0 if not on a sub-level.
+function Sensors.getVerticalVelocity()
+    if not sublevel.isInPlotGrid() then return 0 end
+    return sublevel.getLinearVelocity().y
+end
+
 -- Returns a feedforward multiplier > 1.0 at altitude.
 -- At sea level → 1.0. At lower pressure → proportionally higher.
 -- Compensates for reduced lift efficiency in thinner air.
