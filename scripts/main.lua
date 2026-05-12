@@ -2,12 +2,13 @@
 --  main.lua
 -- ============================================================
 
-local Config  = require("config")
-local State   = require("state")
-local PID     = require("pid")
-local Sensors = require("sensors")
-local Motor   = require("motor")
-local Network = require("network")
+local Config    = require("config")
+local State     = require("state")
+local PID       = require("pid")
+local Sensors   = require("sensors")
+local Motor     = require("motor")
+local Network   = require("network")
+local Telemetry = require("telemetry")
 
 -- ── INITIALISE ───────────────────────────────────────────────
 
@@ -79,10 +80,12 @@ local function flightLoop()
         -- Compute and apply motor command
         if absErr <= Config.HOLD_DEADBAND then
             Motor.stop()
+            State.currentVelocity = 0
         else
             local raw     = controller:update(error, dt)
             local desired = clamp(raw, -Config.MAX_SPEED, Config.MAX_SPEED)
             Motor.setSpeed(desired, State)
+            State.currentVelocity = desired
         end
 
         logStatus()
@@ -105,7 +108,20 @@ local function networkLoop()
     print("[NET] Network loop stopped.")
 end
 
+-- ── TELEMETRY LOOP ───────────────────────────────────────────
+
+local function telemetryLoop()
+    if not Config.HUB_URL then return end
+    print("[TEL] Telemetry loop started.")
+    while State.running do
+        Telemetry.send(State)
+        sleep(1)
+    end
+    Telemetry.close()
+    print("[TEL] Telemetry loop stopped.")
+end
+
 -- ── RUN ──────────────────────────────────────────────────────
 
-parallel.waitForAll(flightLoop, networkLoop)
+parallel.waitForAll(flightLoop, networkLoop, telemetryLoop)
 print("Flight controller shut down cleanly.")

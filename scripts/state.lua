@@ -10,6 +10,7 @@ local State = {
     -- Flight
     targetAltitude    = Config.TARGET_ALTITUDE,
     currentAltitude   = 0,
+    currentVelocity   = 0,        -- m/s command sent to motor (positive = up)
     mode              = "IDLE",   -- IDLE | ASCENT | HOLD | DESCENT
 
     -- Sensor calibration

@@ -1,0 +1,6 @@
+{
+  "name": "flight-controller-hub",
+  "scripts": {
+    "start": "bun run index.ts"
+  }
+}

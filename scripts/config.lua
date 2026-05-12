@@ -35,4 +35,9 @@ Config.SIDE_MODEM       = "top"          -- set to nil to disable networking
 -- ── NETWORKING ──────────────────────────────────────────────
 Config.REDNET_CHANNEL   = 1234           -- shared across all islands
 
+-- ── HUB TELEMETRY ───────────────────────────────────────────
+-- Set HUB_URL to nil to disable telemetry entirely.
+Config.HUB_URL          = "ws://your-server:8080/ws"
+Config.HUB_TOKEN        = "change_me_to_a_long_random_secret"
+
 return Config
