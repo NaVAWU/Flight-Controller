@@ -1,28 +1,38 @@
--- This is the installer for a Create: Aeronautics flight controller, based on flying islands with a single propeller and gyroscopic stabilization. 
-
 -- installer.lua — run this once on the CC computer
-local files = {
-    ["config.lua"]  = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/config.lua",
-    ["main.lua"]    = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/main.lua",
-    ["motor.lua"]   = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/motor.lua",
-    ["network.lua"] = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/network.lua",
-    ["pid.lua"]     = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/pid.lua",
-    ["sensors.lua"] = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/sensors.lua",
-    ["state.lua"]   = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/state.lua",
-}
+-- Fetches the file list from the GitHub repo automatically,
+-- so new scripts are picked up without updating this installer.
 
-for filename, url in pairs(files) do
-    print("Downloading " .. filename)
-    local res = http.get(url)
-    if res then
-        local f = fs.open(filename, "w")
-        f.write(res.readAll())
-        f.close()
-        res.close()
-        print("  OK")
-    else
-        print("  FAILED: " .. url)
+local REPO_API = "https://api.github.com/repos/NaVAWU/Flight-Controller/contents/scripts"
+
+print("Fetching file list from GitHub...")
+local res = http.get(REPO_API)
+assert(res, "Failed to reach GitHub API. Check your internet connection.")
+
+local data = textutils.unserialiseJSON(res.readAll())
+res.close()
+assert(type(data) == "table", "Unexpected response from GitHub API.")
+
+local downloaded, failed = 0, 0
+
+for _, entry in ipairs(data) do
+    if entry.type == "file" and entry.name:match("%.lua$") then
+        print("Downloading " .. entry.name)
+        local file = http.get(entry.download_url)
+        if file then
+            local f = fs.open(entry.name, "w")
+            f.write(file.readAll())
+            f.close()
+            file.close()
+            downloaded = downloaded + 1
+            print("  OK")
+        else
+            print("  FAILED: " .. entry.download_url)
+            failed = failed + 1
+        end
     end
 end
 
-print("Done. Run: main")
+print(("Done. %d file(s) downloaded, %d failed."):format(downloaded, failed))
+if downloaded > 0 and failed == 0 then
+    print("Run: main")
+end
