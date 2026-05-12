@@ -26,7 +26,8 @@ Config.PID_KD           = 1.2
 Config.PID_INTEGRAL_MAX = 10.0            -- anti-windup clamp
 
 -- ── PERIPHERALS ─────────────────────────────────────────────
-Config.SIDE_MOTOR       = "left"
+-- List all motor sides. Add more entries for additional motors.
+Config.MOTORS           = { "left" }
 Config.SIDE_SENSOR      = "back"
 Config.SIDE_MODEM       = "top"          -- set to nil to disable networking
 

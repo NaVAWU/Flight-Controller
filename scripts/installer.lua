@@ -178,11 +178,25 @@ if configIsNew and configTemplate then
 
     -- Peripheral sides
     print("")
-    local motorSide  = askSide("Motor side   (electric_motor)",  findSide("motor")    or "left")
+
+    -- Motors (one or more)
+    local motors = {}
+    motors[1] = askSide("Motor 1 side (electric_motor)", findSide("motor") or "left")
+    while true do
+        write("Add another motor? [y/n]: ")
+        if read():lower() ~= "y" then break end
+        local n = #motors + 1
+        motors[n] = askSide(("Motor %d side (electric_motor)"):format(n), nil)
+    end
+
+    local motorParts = {}
+    for _, s in ipairs(motors) do motorParts[#motorParts + 1] = '"' .. s .. '"' end
+    configTemplate = patchConfig(configTemplate, "MOTORS",
+        "{ " .. table.concat(motorParts, ", ") .. " }")
+
     local sensorSide = askSide("Sensor side  (altitude_sensor)", findSide("altitude") or "back")
     local modemSide  = askSideOrNone("Modem side   (modem, or 'none')", findSide("modem") or "top")
 
-    configTemplate = patchConfig(configTemplate, "SIDE_MOTOR",  '"' .. motorSide  .. '"')
     configTemplate = patchConfig(configTemplate, "SIDE_SENSOR", '"' .. sensorSide .. '"')
     configTemplate = patchConfig(configTemplate, "SIDE_MODEM",
         modemSide == "none" and "nil" or ('"' .. modemSide .. '"'))

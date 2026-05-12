@@ -9,25 +9,28 @@ local Sensors = require("sensors")
 
 local Motor = {}
 
-local _motor = nil
+local _motors = {}
 
 function Motor.init()
-    _motor = peripheral.wrap(Config.SIDE_MOTOR)
-    assert(_motor, "No electric_motor found on side: " .. Config.SIDE_MOTOR)
-    print("[Motor] electric_motor online.")
+    for _, side in ipairs(Config.MOTORS) do
+        local m = peripheral.wrap(side)
+        assert(m, "No electric_motor found on side: " .. side)
+        _motors[#_motors + 1] = m
+    end
+    print(("[Motor] %d electric_motor(s) online."):format(#_motors))
 end
 
--- Set motor speed. Applies pressure feedforward and clamps to -256..256.
+-- Set all motors to the same speed. Applies pressure feedforward and clamps to -256..256.
 function Motor.setSpeed(speed, state)
     local compensation = Sensors.pressureCompensation(state)
     local out = speed * compensation * Config.MOTOR_DIRECTION
     out = math.max(-256, math.min(256, out))
-    _motor.setSpeed(out)
+    for _, m in ipairs(_motors) do m.setSpeed(out) end
 end
 
--- Bring the motor to a stop
+-- Bring all motors to a stop
 function Motor.stop()
-    _motor.setSpeed(0)
+    for _, m in ipairs(_motors) do m.setSpeed(0) end
 end
 
 return Motor
