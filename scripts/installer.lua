@@ -1,3 +1,5 @@
+-- This is the installer for a Create: Aeronautics flight controller, based on flying islands with a single propeller and gyroscopic stabilization. 
+
 -- installer.lua — run this once on the CC computer
 local files = {
     ["config.lua"]  = "https://raw.githubusercontent.com/NaVAWU/Flight-Controller/refs/heads/main/scripts/config.lua",
