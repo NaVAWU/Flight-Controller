@@ -43,14 +43,33 @@ _cmdHandlers["SHUTDOWN"] = function(msg, state)
     state.running = false
 end
 
-local function handleCommand(raw, state)
+local function handleMessage(raw, state)
     local ok, msg = pcall(textutils.unserialiseJSON, raw)
-    if not ok or type(msg) ~= "table" or type(msg.cmd) ~= "string" then return end
+    if not ok or type(msg) ~= "table" then return end
+    if msg.ok then return end   -- ack from server, ignore
+    if type(msg.cmd) ~= "string" then return end
     local handler = _cmdHandlers[msg.cmd]
     if handler then
         handler(msg, state)
     else
         print(("[TEL] Unknown command: %s"):format(msg.cmd))
+    end
+end
+
+-- Drain all incoming messages for `timeout` seconds.
+-- Uses a timer event so multiple messages in quick succession are never missed.
+local function drainMessages(state, timeout)
+    local timer = os.startTimer(timeout)
+    while true do
+        local ev = { os.pullEvent() }
+        if ev[1] == "websocket_message" then
+            handleMessage(ev[3], state)
+        elseif ev[1] == "websocket_closed" then
+            _ws = nil
+            break
+        elseif ev[1] == "timer" and ev[2] == timer then
+            break
+        end
     end
 end
 
@@ -93,11 +112,8 @@ function Telemetry.tick(state)
         return
     end
 
-    -- Wait up to 1s for a command from the server
-    local raw = _ws.receive(1)
-    if raw and raw ~= '{"ok":true}' then
-        handleCommand(raw, state)
-    end
+    -- Drain all incoming messages for 1 second (handles acks + any queued commands)
+    drainMessages(state, 1)
 end
 
 function Telemetry.close()
