@@ -1,5 +1,6 @@
 -- installer.lua — run this once on the CC computer
 -- Fetches the file list from GitHub and only writes files that have changed.
+-- Self-updates: if this file changed remotely it rewrites itself and restarts.
 
 local REPO_API = "https://api.github.com/repos/NaVAWU/Flight-Controller/contents/scripts"
 
@@ -10,9 +11,9 @@ local function fmtBytes(n)
     end
 end
 
-local function readLocal(name)
-    if not fs.exists(name) then return nil end
-    local f = fs.open(name, "r")
+local function readLocal(path)
+    if not fs.exists(path) then return nil end
+    local f = fs.open(path, "r")
     local content = f.readAll()
     f.close()
     return content
@@ -28,14 +29,40 @@ local data = textutils.unserialiseJSON(res.readAll())
 res.close()
 assert(type(data) == "table", "Unexpected response from GitHub API.")
 
--- ── Download and diff ────────────────────────────────────────
+-- ── Self-update check (runs before anything else) ────────────
+
+local selfPath = shell.getRunningProgram()
+local selfName = fs.getName(selfPath)
+
+for _, entry in ipairs(data) do
+    if entry.name == selfName then
+        local remote = http.get(entry.download_url)
+        if remote then
+            local remoteContent = remote.readAll()
+            remote.close()
+            if remoteContent ~= readLocal(selfPath) then
+                local f = fs.open(selfPath, "w")
+                f.write(remoteContent)
+                f.close()
+                print("Installer updated — restarting...")
+                print("")
+                shell.run(selfPath)
+                return
+            end
+        end
+        break
+    end
+end
+
+-- ── Download and diff all other files ───────────────────────
 
 local freeStart = fs.getFreeSpace("/")
 
 local updated, unchanged, failed = 0, 0, 0
 
 for _, entry in ipairs(data) do
-    if entry.type == "file" and entry.name:match("%.lua$") then
+    if entry.type == "file" and entry.name:match("%.lua$")
+    and entry.name ~= selfName then
         local remote = http.get(entry.download_url)
         if not remote then
             print("  FAIL  " .. entry.name)
@@ -63,7 +90,7 @@ end
 -- ── Summary ──────────────────────────────────────────────────
 
 local freeEnd   = fs.getFreeSpace("/")
-local diskDelta = freeStart - freeEnd   -- positive = consumed space, negative = freed
+local diskDelta = freeStart - freeEnd
 
 print("")
 print(("Files: %d updated, %d unchanged, %d failed"):format(updated, unchanged, failed))
