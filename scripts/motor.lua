@@ -1,7 +1,7 @@
 -- ============================================================
 --  motor.lua
---  Abstraction for the Create electric_motor peripheral.
---  Speed is set directly on the motor in the range -256..256.
+--  Abstraction for the Create rotational_speed_controller.
+--  Speed is set in the range -256..256 (negative = descent).
 -- ============================================================
 
 local Config  = require("config")
@@ -9,28 +9,24 @@ local Sensors = require("sensors")
 
 local Motor = {}
 
-local _motors = {}
+local _rsc = nil
 
 function Motor.init()
-    for _, side in ipairs(Config.MOTORS) do
-        local m = peripheral.wrap(side)
-        assert(m, "No electric_motor found on side: " .. side)
-        _motors[#_motors + 1] = m
-    end
-    print(("[Motor] %d electric_motor(s) online."):format(#_motors))
+    _rsc = peripheral.wrap(Config.RSC)
+    assert(_rsc, "No rotational_speed_controller found on side: " .. Config.RSC)
+    print("[Motor] RotationalSpeedController online.")
 end
 
--- Set all motors to the same speed. Applies pressure feedforward and clamps to -256..256.
+-- Set RSC speed. Applies pressure feedforward and clamps to -256..256.
 function Motor.setSpeed(speed, state)
     local compensation = Sensors.pressureCompensation(state)
-    local out = speed * compensation * Config.MOTOR_DIRECTION
-    out = math.max(-256, math.min(256, out))
-    for _, m in ipairs(_motors) do m.setSpeed(out) end
+    local out = math.max(-256, math.min(256, speed * compensation))
+    _rsc.setTargetSpeed(out)
 end
 
--- Bring all motors to a stop
+-- Bring the RSC to a stop
 function Motor.stop()
-    for _, m in ipairs(_motors) do m.setSpeed(0) end
+    _rsc.setTargetSpeed(0)
 end
 
 return Motor

@@ -14,7 +14,6 @@ Config.HOLD_DEADBAND    = 0.5             -- meters: stop correcting inside this
 Config.LOOP_INTERVAL    = 0.1             -- seconds between flight loop ticks
 
 -- ── MOTOR ───────────────────────────────────────────────────
-Config.MOTOR_DIRECTION  = 1               -- flip to -1 if motor lifts when it should sink
 Config.PRESSURE_FF_MAX  = 3.0             -- max feedforward multiplier (prevents runaway)
 
 -- ── PID TUNING ───────────────────────────────────────────────
@@ -26,8 +25,7 @@ Config.PID_KD           = 1.2
 Config.PID_INTEGRAL_MAX = 10.0            -- anti-windup clamp
 
 -- ── PERIPHERALS ─────────────────────────────────────────────
--- List all motor sides. Add more entries for additional motors.
-Config.MOTORS           = { "left" }
+Config.RSC              = "left"          -- side with the rotational_speed_controller
 Config.SIDE_SENSOR      = "back"
 Config.SIDE_MODEM       = "top"          -- set to nil to disable networking
 
