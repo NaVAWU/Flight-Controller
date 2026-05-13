@@ -14,6 +14,7 @@ Config.HOLD_DEADBAND    = 0.5             -- meters: stop correcting inside this
 Config.LOOP_INTERVAL    = 0.1             -- seconds between flight loop ticks
 
 -- ── MOTOR ───────────────────────────────────────────────────
+Config.MAX_RSC_SPEED    = 220              -- max RSC target speed (0..256)
 Config.PRESSURE_FF_MAX  = 3.0             -- max feedforward multiplier (prevents runaway)
 
 -- ── PID TUNING ───────────────────────────────────────────────

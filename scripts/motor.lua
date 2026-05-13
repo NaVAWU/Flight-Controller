@@ -20,7 +20,8 @@ end
 -- Set RSC speed. Applies pressure feedforward and clamps to -256..256.
 function Motor.setSpeed(speed, state)
     local compensation = Sensors.pressureCompensation(state)
-    local out = math.max(-256, math.min(256, speed * compensation))
+    local lim = Config.MAX_RSC_SPEED
+    local out = math.max(-lim, math.min(lim, speed * compensation))
     _rsc.setTargetSpeed(out)
 end
 

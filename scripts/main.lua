@@ -91,7 +91,7 @@ local function flightLoop()
             Motor.stop()
         else
             local raw     = controller:update(error, dt)
-            local desired = clamp(raw, -256, 256)
+            local desired = clamp(raw, -Config.MAX_RSC_SPEED, Config.MAX_RSC_SPEED)
             Motor.setSpeed(desired, State)
         end
 
