@@ -9,7 +9,6 @@ Config.ISLAND_ID        = "island_"       -- unique name per island
 
 -- ── FLIGHT PARAMETERS ───────────────────────────────────────
 Config.TARGET_ALTITUDE  = 210             -- meters
-Config.MAX_SPEED        = 5.0             -- max vertical velocity in m/s (measured via sublevel)
 Config.HOLD_DEADBAND    = 0.5             -- meters: stop correcting inside this band
 Config.LOOP_INTERVAL    = 0.1             -- seconds between flight loop ticks
 

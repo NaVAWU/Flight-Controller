@@ -82,12 +82,8 @@ local function flightLoop()
             State.mode = "DESCENT"
         end
 
-        -- Velocity cap: stop driving if already moving fast enough in the right direction
-        local velCapped = (error > 0 and State.currentVelocity >=  Config.MAX_SPEED)
-                       or (error < 0 and State.currentVelocity <= -Config.MAX_SPEED)
-
         -- Compute and apply motor command
-        if absErr <= Config.HOLD_DEADBAND or velCapped then
+        if absErr <= Config.HOLD_DEADBAND then
             Motor.stop()
         else
             local raw     = controller:update(error, dt)
