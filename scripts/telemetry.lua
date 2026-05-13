@@ -94,13 +94,18 @@ function Telemetry.tick(state)
 
     -- Send status
     local payload = textutils.serialiseJSON({
-        type     = "status",
-        island   = Config.ISLAND_ID,
-        altitude = state.currentAltitude,
-        target   = state.targetAltitude,
-        velocity = state.currentVelocity,
-        mode     = state.mode,
-        pressure = Sensors.getAirPressure(),
+        type      = "status",
+        island    = Config.ISLAND_ID,
+        altitude  = state.currentAltitude,
+        target    = state.targetAltitude,
+        velocity  = state.currentVelocity,
+        mode      = state.mode,
+        pressure  = Sensors.getAirPressure(),
+        pid_kp    = Config.PID_KP,
+        pid_ki    = Config.PID_KI,
+        pid_kd    = Config.PID_KD,
+        pid_imax  = Config.PID_INTEGRAL_MAX,
+        hover_rsc = Config.HOVER_RSC,
     })
 
     local ok, err = pcall(_ws.send, payload)

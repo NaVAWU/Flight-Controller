@@ -11,7 +11,12 @@ db.exec(`
     velocity  REAL,
     mode      TEXT,
     pressure  REAL,
-    connected INTEGER NOT NULL DEFAULT 0
+    connected INTEGER NOT NULL DEFAULT 0,
+    pid_kp    REAL,
+    pid_ki    REAL,
+    pid_kd    REAL,
+    pid_imax  REAL,
+    hover_rsc REAL
   );
 
   CREATE TABLE IF NOT EXISTS status_log (
@@ -28,12 +33,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_log_island ON status_log (island_id, ts DESC);
 `);
 
-// Migrate existing databases that predate the connected column.
+// Migrate existing databases that predate these columns.
 try { db.exec(`ALTER TABLE islands ADD COLUMN connected INTEGER NOT NULL DEFAULT 0`); } catch {}
+try { db.exec(`ALTER TABLE islands ADD COLUMN pid_kp    REAL`); } catch {}
+try { db.exec(`ALTER TABLE islands ADD COLUMN pid_ki    REAL`); } catch {}
+try { db.exec(`ALTER TABLE islands ADD COLUMN pid_kd    REAL`); } catch {}
+try { db.exec(`ALTER TABLE islands ADD COLUMN pid_imax  REAL`); } catch {}
+try { db.exec(`ALTER TABLE islands ADD COLUMN hover_rsc REAL`); } catch {}
 
 export const stmtUpsert = db.prepare(`
-  INSERT INTO islands (id, last_seen, altitude, target, velocity, mode, pressure, connected)
-  VALUES ($id, $ts, $alt, $target, $vel, $mode, $pres, 1)
+  INSERT INTO islands (id, last_seen, altitude, target, velocity, mode, pressure, connected, pid_kp, pid_ki, pid_kd, pid_imax, hover_rsc)
+  VALUES ($id, $ts, $alt, $target, $vel, $mode, $pres, 1, $kp, $ki, $kd, $imax, $hover_rsc)
   ON CONFLICT(id) DO UPDATE SET
     last_seen = excluded.last_seen,
     altitude  = excluded.altitude,
@@ -41,7 +51,12 @@ export const stmtUpsert = db.prepare(`
     velocity  = excluded.velocity,
     mode      = excluded.mode,
     pressure  = excluded.pressure,
-    connected = 1
+    connected = 1,
+    pid_kp    = COALESCE(excluded.pid_kp,    pid_kp),
+    pid_ki    = COALESCE(excluded.pid_ki,    pid_ki),
+    pid_kd    = COALESCE(excluded.pid_kd,    pid_kd),
+    pid_imax  = COALESCE(excluded.pid_imax,  pid_imax),
+    hover_rsc = COALESCE(excluded.hover_rsc, hover_rsc)
 `);
 
 export const stmtLog = db.prepare(`
@@ -72,4 +87,9 @@ export interface IslandRow {
   mode:      string | null;
   pressure:  number | null;
   connected: number;
+  pid_kp:    number | null;
+  pid_ki:    number | null;
+  pid_kd:    number | null;
+  pid_imax:  number | null;
+  hover_rsc: number | null;
 }

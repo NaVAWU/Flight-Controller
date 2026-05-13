@@ -12,13 +12,18 @@ export type WSData = {
 };
 
 interface StatusMsg {
-  type:      "status";
-  island:    string;
-  altitude?: number;
-  target?:   number;
-  velocity?: number;
-  mode?:     string;
-  pressure?: number;
+  type:       "status";
+  island:     string;
+  altitude?:  number;
+  target?:    number;
+  velocity?:  number;
+  mode?:      string;
+  pressure?:  number;
+  pid_kp?:    number;
+  pid_ki?:    number;
+  pid_kd?:    number;
+  pid_imax?:  number;
+  hover_rsc?: number;
 }
 
 // ── Connection registry ───────────────────────────────────────
@@ -88,13 +93,18 @@ function handleStatus(ws: ServerWebSocket<WSData>, msg: StatusMsg): string | nul
   }
 
   const params = {
-    $id:     msg.island,
-    $ts:     Date.now(),
-    $alt:    msg.altitude ?? null,
-    $target: msg.target   ?? null,
-    $vel:    msg.velocity ?? null,
-    $mode:   msg.mode     ?? null,
-    $pres:   msg.pressure ?? null,
+    $id:       msg.island,
+    $ts:       Date.now(),
+    $alt:      msg.altitude  ?? null,
+    $target:   msg.target    ?? null,
+    $vel:      msg.velocity  ?? null,
+    $mode:     msg.mode      ?? null,
+    $pres:     msg.pressure  ?? null,
+    $kp:       msg.pid_kp    ?? null,
+    $ki:       msg.pid_ki    ?? null,
+    $kd:       msg.pid_kd    ?? null,
+    $imax:     msg.pid_imax  ?? null,
+    $hover_rsc: msg.hover_rsc ?? null,
   };
   stmtUpsert.run(params);
   stmtLog.run(params);
