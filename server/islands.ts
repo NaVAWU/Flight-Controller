@@ -12,18 +12,14 @@ export type WSData = {
 };
 
 interface StatusMsg {
-  type:       "status";
-  island:     string;
-  altitude?:  number;
-  target?:    number;
-  velocity?:  number;
-  mode?:      string;
-  pressure?:  number;
-  pid_kp?:    number;
-  pid_ki?:    number;
-  pid_kd?:    number;
-  pid_imax?:  number;
-  hover_rsc?: number;
+  type:      "status";
+  island:    string;
+  altitude?: number;
+  target?:   number;
+  velocity?: number;
+  mode?:     string;
+  pressure?: number;
+  config?:   Record<string, unknown>;
 }
 
 // ── Connection registry ───────────────────────────────────────
@@ -93,18 +89,14 @@ function handleStatus(ws: ServerWebSocket<WSData>, msg: StatusMsg): string | nul
   }
 
   const params = {
-    $id:       msg.island,
-    $ts:       Date.now(),
-    $alt:      msg.altitude  ?? null,
-    $target:   msg.target    ?? null,
-    $vel:      msg.velocity  ?? null,
-    $mode:     msg.mode      ?? null,
-    $pres:     msg.pressure  ?? null,
-    $kp:       msg.pid_kp    ?? null,
-    $ki:       msg.pid_ki    ?? null,
-    $kd:       msg.pid_kd    ?? null,
-    $imax:     msg.pid_imax  ?? null,
-    $hover_rsc: msg.hover_rsc ?? null,
+    $id:     msg.island,
+    $ts:     Date.now(),
+    $alt:    msg.altitude ?? null,
+    $target: msg.target   ?? null,
+    $vel:    msg.velocity ?? null,
+    $mode:   msg.mode     ?? null,
+    $pres:   msg.pressure ?? null,
+    $config: msg.config ? JSON.stringify(msg.config) : null,
   };
   stmtUpsert.run(params);
   stmtLog.run(params);
@@ -154,6 +146,16 @@ export const websocket = {
   },
 };
 
+// ── Response formatting ───────────────────────────────────────
+
+function formatIsland(row: IslandRow) {
+  const { config: configJson, ...telemetry } = row;
+  return {
+    ...telemetry,
+    config: configJson ? JSON.parse(configJson) : null,
+  };
+}
+
 // ── HTTP handler ──────────────────────────────────────────────
 
 export async function fetch(req: Request, server: Server): Promise<Response | undefined> {
@@ -179,7 +181,7 @@ export async function fetch(req: Request, server: Server): Promise<Response | un
     log("HTTP", `GET ${path} — ${ip}`);
 
     if (path === "/islands") {
-      return Response.json(stmtAll.all());
+      return Response.json((stmtAll.all() as IslandRow[]).map(formatIsland));
     }
 
     const m = path.match(/^\/islands\/([^/]+)(\/history)?$/);
@@ -189,8 +191,8 @@ export async function fetch(req: Request, server: Server): Promise<Response | un
         const limit = Math.min(Number(url.searchParams.get("limit") ?? 100), 1000);
         return Response.json(stmtHist.all({ $id: id, $limit: limit }));
       }
-      const row = stmtOne.get({ $id: id });
-      return row ? Response.json(row) : new Response("Island not found", { status: 404 });
+      const row = stmtOne.get({ $id: id }) as IslandRow | undefined;
+      return row ? Response.json(formatIsland(row)) : new Response("Island not found", { status: 404 });
     }
   }
 
