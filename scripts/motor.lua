@@ -21,7 +21,7 @@ end
 function Motor.setSpeed(speed, state)
     local compensation = Sensors.pressureCompensation(state)
     local lim = Config.MAX_RSC_SPEED
-    local out = math.max(-lim, math.min(lim, (speed + Config.HOVER_RSC) * compensation))
+    local out = math.max(-lim, math.min(lim, (speed + (Config.HOVER_RSC or 0)) * compensation))
     _rsc.setTargetSpeed(out)
 end
 

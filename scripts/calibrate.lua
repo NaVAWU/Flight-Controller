@@ -6,7 +6,8 @@ local Config  = require("config")
 local Sensors = require("sensors")
 
 local STEP_INTERVAL  = 0.3    -- seconds per RSC step
-local LIFT_THRESHOLD = 0.05   -- m/s upward velocity = liftoff detected
+local LIFT_THRESHOLD = 0.2    -- m/s upward velocity = liftoff detected
+local SUSTAIN_STEPS  = 3      -- must stay above threshold for this many consecutive steps
 
 local function patchConfig(src, key, val)
     return (src:gsub("Config%." .. key .. "%s*=[^\n]*", "Config." .. key .. " = " .. val))
@@ -33,7 +34,8 @@ print("")
 write("  RSC:   0  vel: +0.000 m/s")
 local _, displayRow = term.getCursorPos()
 
-local hoverRSC = nil
+local hoverRSC    = nil
+local sustainCount = 0
 
 for speed = 0, 256 do
     rsc.setTargetSpeed(speed)
@@ -43,11 +45,16 @@ for speed = 0, 256 do
 
     term.setCursorPos(1, displayRow)
     term.clearLine()
-    write(("  RSC: %3d  vel: %+.3f m/s"):format(speed, vel))
+    write(("  RSC: %3d  vel: %+.3f m/s  [%d/%d]"):format(speed, vel, sustainCount, SUSTAIN_STEPS))
 
     if vel >= LIFT_THRESHOLD then
-        hoverRSC = speed
-        break
+        sustainCount = sustainCount + 1
+        if sustainCount >= SUSTAIN_STEPS then
+            hoverRSC = speed - SUSTAIN_STEPS + 1  -- first step that triggered
+            break
+        end
+    else
+        sustainCount = 0  -- reset on any dip below threshold
     end
 end
 
@@ -68,7 +75,11 @@ local f = fs.open("config.lua", "r")
 local src = f.readAll()
 f.close()
 
-src = patchConfig(src, "HOVER_RSC", tostring(hoverRSC))
+if src:find("Config%.HOVER_RSC") then
+    src = patchConfig(src, "HOVER_RSC", tostring(hoverRSC))
+else
+    src = src:gsub("return Config", "Config.HOVER_RSC = " .. tostring(hoverRSC) .. "\nreturn Config")
+end
 
 local g = fs.open("config.lua", "w")
 g.write(src)
