@@ -84,7 +84,7 @@ local function flightLoop()
 
         -- Compute and apply motor command
         if absErr <= Config.HOLD_DEADBAND then
-            Motor.stop()
+            Motor.setSpeed(0, State)   -- hover in place; stop() would cut thrust and drop the island
         else
             local raw     = controller:update(error, dt)
             local desired = clamp(raw, -Config.MAX_RSC_SPEED, Config.MAX_RSC_SPEED)

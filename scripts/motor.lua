@@ -17,11 +17,11 @@ function Motor.init()
     print("[Motor] RotationalSpeedController online.")
 end
 
--- Set RSC speed. Applies pressure feedforward and clamps to -256..256.
+-- Set RSC speed. Adds hover feedforward, applies pressure compensation, and clamps.
 function Motor.setSpeed(speed, state)
     local compensation = Sensors.pressureCompensation(state)
     local lim = Config.MAX_RSC_SPEED
-    local out = math.max(-lim, math.min(lim, speed * compensation))
+    local out = math.max(-lim, math.min(lim, (speed + Config.HOVER_RSC) * compensation))
     _rsc.setTargetSpeed(out)
 end
 

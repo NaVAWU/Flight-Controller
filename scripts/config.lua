@@ -14,14 +14,15 @@ Config.LOOP_INTERVAL    = 0.1             -- seconds between flight loop ticks
 
 -- ── MOTOR ───────────────────────────────────────────────────
 Config.MAX_RSC_SPEED    = 220              -- max RSC target speed (0..256)
+Config.HOVER_RSC        = 0               -- RSC value that just lifts the island (set by calibrate.lua)
 Config.PRESSURE_FF_MAX  = 3.0             -- max feedforward multiplier (prevents runaway)
 
 -- ── PID TUNING ───────────────────────────────────────────────
 -- Start with kI = 0. Tune kP until stable, add kD to dampen,
 -- then a small kI to fix residual drift.
-Config.PID_KP           = 2.0
+Config.PID_KP           = 1.5
 Config.PID_KI           = 0.05
-Config.PID_KD           = 1.2
+Config.PID_KD           = 0.3
 Config.PID_INTEGRAL_MAX = 10.0            -- anti-windup clamp
 
 -- ── PERIPHERALS ─────────────────────────────────────────────
