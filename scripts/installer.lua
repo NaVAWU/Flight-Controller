@@ -5,7 +5,6 @@
 
 local REPO_API   = "https://api.github.com/repos/NaVAWU/Flight-Controller/contents/scripts"
 local CONFIG_FILE = "config.lua"
-local SIDES       = { "top", "bottom", "left", "right", "front", "back" }
 
 -- ── Helpers ──────────────────────────────────────────────────
 
@@ -43,23 +42,21 @@ local function ask(label, default)
     return (v == "" and default or v)
 end
 
-local function askSide(label, default)
-    local valid = {}
-    for _, s in ipairs(SIDES) do valid[s] = true end
+-- Accepts any side or peripheral name that is actually present.
+local function askPeripheral(label, default)
     while true do
         local v = ask(label, default)
-        if valid[v] then return v end
-        print("  Must be one of: " .. table.concat(SIDES, " / "))
+        if peripheral.isPresent(v) then return v end
+        print("  No peripheral found with that side or name. Try again.")
     end
 end
 
-local function askSideOrNone(label, default)
-    local valid = { none = true }
-    for _, s in ipairs(SIDES) do valid[s] = true end
+-- Same as askPeripheral but also accepts the literal string "none".
+local function askPeripheralOrNone(label, default)
     while true do
         local v = ask(label, default)
-        if valid[v] then return v end
-        print("  Must be a side or 'none': " .. table.concat(SIDES, " / "))
+        if v == "none" or peripheral.isPresent(v) then return v end
+        print("  No peripheral found. Enter a side, a peripheral name, or 'none'.")
     end
 end
 
@@ -97,16 +94,15 @@ end
 
 -- ── Peripheral scan (used later as wizard defaults) ───────────
 
-local detected = {}   -- side → peripheral type
-for _, side in ipairs(SIDES) do
-    local t = peripheral.getType(side)
-    if t then detected[side] = t end
+local detected = {}   -- name/side → peripheral type
+for _, name in ipairs(peripheral.getNames()) do
+    detected[name] = peripheral.getType(name)
 end
 
--- Returns the first side whose peripheral type contains the substring.
-local function findSide(sub)
-    for side, t in pairs(detected) do
-        if t:lower():find(sub, 1, true) then return side end
+-- Returns the first peripheral name/side whose type contains the substring.
+local function findPeripheral(sub)
+    for name, t in pairs(detected) do
+        if t:lower():find(sub, 1, true) then return name end
     end
 end
 
@@ -180,15 +176,15 @@ if configIsNew and configTemplate then
     print("")
 
     -- RotationalSpeedController
-    local rscSide = askSide("RSC side (rotational_speed_controller)", findSide("rotational") or "left")
-    configTemplate = patchConfig(configTemplate, "RSC", '"' .. rscSide .. '"')
+    local rscId    = askPeripheral("RSC side or name (rotational_speed_controller)", findPeripheral("rotational") or "left")
+    configTemplate = patchConfig(configTemplate, "RSC", '"' .. rscId .. '"')
 
-    local sensorSide = askSide("Sensor side  (altitude_sensor)", findSide("altitude") or "back")
-    local modemSide  = askSideOrNone("Modem side   (modem, or 'none')", findSide("modem") or "top")
+    local sensorId = askPeripheral("Sensor side or name (altitude_sensor)",          findPeripheral("altitude")    or "back")
+    local modemId  = askPeripheralOrNone("Modem side or name (modem, or 'none')",    findPeripheral("modem")       or "top")
 
-    configTemplate = patchConfig(configTemplate, "SIDE_SENSOR", '"' .. sensorSide .. '"')
+    configTemplate = patchConfig(configTemplate, "SIDE_SENSOR", '"' .. sensorId .. '"')
     configTemplate = patchConfig(configTemplate, "SIDE_MODEM",
-        modemSide == "none" and "nil" or ('"' .. modemSide .. '"'))
+        modemId == "none" and "nil" or ('"' .. modemId .. '"'))
 
     -- Rednet channel
     print("")

@@ -144,7 +144,7 @@ read()
 Sensors.calibrate(state)
 
 local rsc = peripheral.wrap(Config.RSC)
-assert(rsc, "No RSC on side: " .. Config.RSC)
+assert(rsc, "No RSC found at: " .. Config.RSC)
 
 print("Ramping RSC slowly — do not move the island.")
 print("")

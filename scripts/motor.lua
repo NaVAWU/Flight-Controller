@@ -13,7 +13,7 @@ local _rsc = nil
 
 function Motor.init()
     _rsc = peripheral.wrap(Config.RSC)
-    assert(_rsc, "No rotational_speed_controller found on side: " .. Config.RSC)
+    assert(_rsc, "No rotational_speed_controller found at: " .. Config.RSC)
     print("[Motor] RotationalSpeedController online.")
 end
 

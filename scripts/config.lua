@@ -26,7 +26,7 @@ Config.PID_KD           = 0.3
 Config.PID_INTEGRAL_MAX = 40.0            -- anti-windup clamp
 
 -- ── PERIPHERALS ─────────────────────────────────────────────
-Config.RSC              = "left"          -- side with the rotational_speed_controller
+Config.RSC              = "left"          -- side or peripheral name (e.g. "Create_RotationalSpeedController_9")
 Config.SIDE_SENSOR      = "back"
 Config.SIDE_MODEM       = "top"          -- set to nil to disable networking
 
