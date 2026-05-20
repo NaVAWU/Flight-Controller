@@ -78,11 +78,13 @@ end
 
 -- ── FLIGHT LOOP ──────────────────────────────────────────────
 
-local _steadyStart = nil
-local TRIM_WINDOW  = 20                      -- seconds of steady state before trimming
-local TRIM_MAX     = 15                      -- RSC: sanity cap on trim delta
-local TRIM_VEL     = 0.1                     -- m/s: max velocity to qualify as steady
-local TRIM_ERR     = Config.HOLD_DEADBAND * 2  -- metres: max error to qualify as steady
+local _steadyStart  = nil
+local _lastTrimTime = nil
+local TRIM_WINDOW   = 20                      -- seconds of steady state before trimming
+local TRIM_COOLDOWN = 300                     -- seconds between trim events
+local TRIM_MAX      = 15                      -- RSC: sanity cap on trim delta
+local TRIM_VEL      = 0.1                     -- m/s: max velocity to qualify as steady
+local TRIM_ERR      = Config.HOLD_DEADBAND * 2  -- metres: max error to qualify as steady
 
 local function flightLoop()
     print(("[FC] Flight loop started. Target: %dm"):format(State.targetAltitude))
@@ -119,8 +121,10 @@ local function flightLoop()
 
         -- Trim learning: once the island has been steady for TRIM_WINDOW seconds,
         -- fold the I-term into HOVER_RSC so the integral starts fresh next flight.
-        local trimEligible = absErr < TRIM_ERR
-                          and math.abs(State.currentVelocity) < TRIM_VEL
+        local trimCooledDown = not _lastTrimTime or (now - _lastTrimTime >= TRIM_COOLDOWN)
+        local trimEligible   = trimCooledDown
+                           and absErr < TRIM_ERR
+                           and math.abs(State.currentVelocity) < TRIM_VEL
         if trimEligible then
             if not _steadyStart then _steadyStart = now end
             if now - _steadyStart >= TRIM_WINDOW then
@@ -134,7 +138,8 @@ local function flightLoop()
                     saveHoverRSC(saved)
                     print(("[TRIM] HOVER_RSC updated to %d (delta %+.2f)"):format(saved, delta))
                 end
-                _steadyStart = nil
+                _lastTrimTime = now
+                _steadyStart  = nil
             end
         else
             _steadyStart = nil
