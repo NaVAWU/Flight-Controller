@@ -72,16 +72,19 @@ local function rampDown(fromRSC, rsc)
     rsc.setTargetSpeed(0)
 end
 
-local function binarySearchHover(liftoffRSC, rsc, binaryRow)
+-- groundAlt is the pre-ramp ground level so we can distinguish
+-- "hovering at vel≈0" from "sitting on the ground at vel≈0".
+local function binarySearchHover(liftoffRSC, rsc, binaryRow, groundAlt)
     local lo             = math.max(0, liftoffRSC - BINARY_LO_RANGE)
     local hi             = liftoffRSC
     local searchStartAlt = Sensors.getHeight()
     local result         = math.floor((lo + hi) / 2)
+    local AIRBORNE_MIN   = groundAlt + 0.5  -- below this = grounded
 
-    -- Validate lower bound: if island lands immediately raise it by 5
+    -- Validate lower bound: if island is on or near ground, raise lo
     rsc.setTargetSpeed(lo)
     sleep(BINARY_SETTLE)
-    if Sensors.getHeight() < searchStartAlt - 0.5 then
+    if Sensors.getHeight() <= AIRBORNE_MIN then
         lo = lo + 5
         rsc.setTargetSpeed(hi)
         sleep(BINARY_RECOVER)
@@ -98,7 +101,13 @@ local function binarySearchHover(liftoffRSC, rsc, binaryRow)
         statusLine(binaryRow, "  Binary [%d/%d] RSC=%3d  vel=%+.3f",
                    i, BINARY_ITER, mid, vel)
 
-        if math.abs(vel) <= BINARY_DEADBAND then
+        if currentAlt <= AIRBORNE_MIN then
+            -- Island grounded: RSC is too low regardless of velocity reading
+            lo = mid
+            rsc.setTargetSpeed(hi)
+            sleep(BINARY_RECOVER)
+            searchStartAlt = Sensors.getHeight()
+        elseif math.abs(vel) <= BINARY_DEADBAND then
             result = mid
             break
         elseif vel > BINARY_DEADBAND then
@@ -106,7 +115,6 @@ local function binarySearchHover(liftoffRSC, rsc, binaryRow)
         else
             lo = mid        -- island falling: RSC too low
             if currentAlt < searchStartAlt - 0.5 then
-                -- Island landed; re-lift before continuing
                 rsc.setTargetSpeed(hi)
                 sleep(BINARY_RECOVER)
                 searchStartAlt = Sensors.getHeight()
@@ -186,7 +194,7 @@ write(("  Binary [0/%d] ..."):format(BINARY_ITER))
 local _, binaryRow = term.getCursorPos()
 
 local roughRSC   = hoverRSC
-local refinedRSC = binarySearchHover(roughRSC, rsc, binaryRow)
+local refinedRSC = binarySearchHover(roughRSC, rsc, binaryRow, startAlt)
 
 print("")
 print("Stopping engines...")
@@ -278,24 +286,25 @@ end
 print("")
 print("Finding KP (KI=0, KD=0)...")
 
+local lo_kp  = 0.2
+local hi_kp  = 5.0
 local bestKP = 0.5
-local kp     = 0.25
 
-for _ = 1, 10 do
+for _ = 1, 8 do
+    local kp = (lo_kp + hi_kp) / 2
     write(("  KP=%.3f ... "):format(kp))
     local r = stepTest(kp, 0, 0, 50)
 
     if r.oscillating then
-        print(("oscillating (overshoot %.1fm) — reducing"):format(r.overshoot))
-        kp = kp * 0.6
+        print(("oscillating (overshoot %.1fm) — too high"):format(r.overshoot))
+        hi_kp = kp
     elseif r.reached then
         print(("reached  overshoot %.2fm"):format(r.overshoot))
         bestKP = kp
-        break
+        hi_kp  = kp  -- try to find smaller working KP
     else
-        print("did not reach target — increasing")
-        kp = kp * 1.6
-        if kp > 6 then print("KP limit reached."); break end
+        print("did not reach target — too low")
+        lo_kp = kp
     end
 end
 
