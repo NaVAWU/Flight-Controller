@@ -12,6 +12,13 @@ local LIFT_THRESHOLD   = 0.05  -- m/s: catch first movement, not sustained climb
 local SUSTAIN_NEEDED   = 2     -- consecutive steps above threshold to confirm liftoff
 local ALTITUDE_GUARD   = 3     -- blocks: force liftoff detection if island rises this far
 
+local BINARY_ITER     = 7     -- iterations (gives 25/2^7 ≈ 0.2 RSC precision)
+local BINARY_LO_RANGE = 25    -- RSC units below liftoff_rsc to start search
+local BINARY_SETTLE   = 1.5   -- seconds to let velocity settle per iteration
+local BINARY_SAMPLES  = 8     -- velocity readings per iteration
+local BINARY_DEADBAND = 0.08  -- m/s: island is hovering if |vel| is within this
+local BINARY_RECOVER  = 1.5   -- seconds to re-lift if island lands during search
+
 local STEP_METRES      = 8     -- altitude change for each PID test
 local TEST_TIMEOUT     = 22    -- seconds allowed for island to reach step target
 local RETURN_TIMEOUT   = 18    -- seconds allowed to return to base altitude
@@ -65,6 +72,52 @@ local function rampDown(fromRSC, rsc)
     rsc.setTargetSpeed(0)
 end
 
+local function binarySearchHover(liftoffRSC, rsc, binaryRow)
+    local lo             = math.max(0, liftoffRSC - BINARY_LO_RANGE)
+    local hi             = liftoffRSC
+    local searchStartAlt = Sensors.getHeight()
+    local result         = math.floor((lo + hi) / 2)
+
+    -- Validate lower bound: if island lands immediately raise it by 5
+    rsc.setTargetSpeed(lo)
+    sleep(BINARY_SETTLE)
+    if Sensors.getHeight() < searchStartAlt - 0.5 then
+        lo = lo + 5
+        rsc.setTargetSpeed(hi)
+        sleep(BINARY_RECOVER)
+        searchStartAlt = Sensors.getHeight()
+    end
+
+    for i = 1, BINARY_ITER do
+        local mid = math.floor((lo + hi) / 2)
+        rsc.setTargetSpeed(mid)
+        sleep(BINARY_SETTLE)
+
+        local vel        = avgVel(BINARY_SAMPLES)
+        local currentAlt = Sensors.getHeight()
+        statusLine(binaryRow, "  Binary [%d/%d] RSC=%3d  vel=%+.3f",
+                   i, BINARY_ITER, mid, vel)
+
+        if math.abs(vel) <= BINARY_DEADBAND then
+            result = mid
+            break
+        elseif vel > BINARY_DEADBAND then
+            hi = mid        -- island rising: RSC too high
+        else
+            lo = mid        -- island falling: RSC too low
+            if currentAlt < searchStartAlt - 0.5 then
+                -- Island landed; re-lift before continuing
+                rsc.setTargetSpeed(hi)
+                sleep(BINARY_RECOVER)
+                searchStartAlt = Sensors.getHeight()
+            end
+        end
+        result = math.floor((lo + hi) / 2)
+    end
+
+    return result
+end
+
 -- ── Init ─────────────────────────────────────────────────────
 
 print("=== Island Calibration ===")
@@ -116,18 +169,32 @@ for speed = 0, 256 do
 end
 
 print("")
-print("Stopping engines...")
-rampDown(peakRSC, rsc)
-print("Engines stopped.")
-print("")
 
 if not hoverRSC then
+    print("Stopping engines...")
+    rampDown(peakRSC, rsc)
+    print("Engines stopped.")
     print("ERROR: No liftoff detected up to RSC 256.")
     print("Check that the RSC peripheral is connected and the island can move freely.")
     return
 end
 
-print(("Hover point: RSC = %d"):format(hoverRSC))
+print(("Rough liftoff RSC = %d — refining with binary search..."):format(hoverRSC))
+print("")
+write(("  Binary [0/%d] ..."):format(BINARY_ITER))
+local _, binaryRow = term.getCursorPos()
+
+local roughRSC   = hoverRSC
+local refinedRSC = binarySearchHover(roughRSC, rsc, binaryRow)
+
+print("")
+print("Stopping engines...")
+rampDown(peakRSC, rsc)
+print("Engines stopped.")
+print("")
+
+print(("Hover point: RSC = %d  (rough liftoff was %d)"):format(refinedRSC, roughRSC))
+hoverRSC = refinedRSC
 saveConfig({ HOVER_RSC = tostring(hoverRSC) })
 print("Saved HOVER_RSC to config.lua.")
 
