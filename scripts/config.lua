@@ -23,7 +23,7 @@ Config.PRESSURE_FF_MAX  = 3.0             -- max feedforward multiplier (prevent
 Config.PID_KP           = 1.5
 Config.PID_KI           = 0.05
 Config.PID_KD           = 0.3
-Config.PID_INTEGRAL_MAX = 10.0            -- anti-windup clamp
+Config.PID_INTEGRAL_MAX = 40.0            -- anti-windup clamp
 
 -- ── PERIPHERALS ─────────────────────────────────────────────
 Config.RSC              = "left"          -- side with the rotational_speed_controller
