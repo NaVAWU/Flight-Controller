@@ -55,6 +55,10 @@ local function saveHoverRSC(value)
             "Config.HOVER_RSC = " .. tostring(value) .. "\nreturn Config")
     end
     local g = fs.open("config.lua", "w")
+    if not g then
+        print("[TRIM] ERROR: could not write config.lua — trim not saved")
+        return
+    end
     g.write(result); g.close()
 end
 
@@ -124,9 +128,9 @@ local function flightLoop()
                 if math.abs(delta) > TRIM_MAX then
                     print(("[TRIM] delta %.2f exceeds limit — skipping"):format(delta))
                 else
-                    Config.HOVER_RSC = Config.HOVER_RSC + delta
+                    local saved = math.floor(Config.HOVER_RSC + delta + 0.5)
+                    Config.HOVER_RSC = saved
                     controller:reset()
-                    local saved = math.floor(Config.HOVER_RSC + 0.5)
                     saveHoverRSC(saved)
                     print(("[TRIM] HOVER_RSC updated to %d (delta %+.2f)"):format(saved, delta))
                 end
