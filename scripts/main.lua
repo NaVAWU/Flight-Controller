@@ -42,6 +42,22 @@ local function clamp(v, lo, hi)
     return math.max(lo, math.min(hi, v))
 end
 
+local function saveHoverRSC(value)
+    local f = fs.open("config.lua", "r")
+    if not f then return end
+    local src = f.readAll(); f.close()
+    local result, n = src:gsub(
+        "Config%.HOVER_RSC%s*=[^\n]*",
+        "Config.HOVER_RSC = " .. tostring(value))
+    if n == 0 then
+        result = result:gsub(
+            "return Config",
+            "Config.HOVER_RSC = " .. tostring(value) .. "\nreturn Config")
+    end
+    local g = fs.open("config.lua", "w")
+    g.write(result); g.close()
+end
+
 local _lastLogSecond = -1
 
 local function logStatus()
@@ -57,6 +73,12 @@ local function logStatus()
 end
 
 -- ── FLIGHT LOOP ──────────────────────────────────────────────
+
+local _steadyStart = nil
+local TRIM_WINDOW  = 20                      -- seconds of steady state before trimming
+local TRIM_MAX     = 15                      -- RSC: sanity cap on trim delta
+local TRIM_VEL     = 0.1                     -- m/s: max velocity to qualify as steady
+local TRIM_ERR     = Config.HOLD_DEADBAND * 2  -- metres: max error to qualify as steady
 
 local function flightLoop()
     print(("[FC] Flight loop started. Target: %dm"):format(State.targetAltitude))
@@ -89,6 +111,29 @@ local function flightLoop()
             local raw     = controller:update(error, dt)
             local desired = clamp(raw, -Config.MAX_RSC_SPEED, Config.MAX_RSC_SPEED)
             Motor.setSpeed(desired, State)
+        end
+
+        -- Trim learning: once the island has been steady for TRIM_WINDOW seconds,
+        -- fold the I-term into HOVER_RSC so the integral starts fresh next flight.
+        local trimEligible = absErr < TRIM_ERR
+                          and math.abs(State.currentVelocity) < TRIM_VEL
+        if trimEligible then
+            if not _steadyStart then _steadyStart = now end
+            if now - _steadyStart >= TRIM_WINDOW then
+                local delta = Config.PID_KI * controller._integral
+                if math.abs(delta) > TRIM_MAX then
+                    print(("[TRIM] delta %.2f exceeds limit — skipping"):format(delta))
+                else
+                    Config.HOVER_RSC = Config.HOVER_RSC + delta
+                    controller:reset()
+                    local saved = math.floor(Config.HOVER_RSC + 0.5)
+                    saveHoverRSC(saved)
+                    print(("[TRIM] HOVER_RSC updated to %d (delta %+.2f)"):format(saved, delta))
+                end
+                _steadyStart = nil
+            end
+        else
+            _steadyStart = nil
         end
 
         logStatus()
