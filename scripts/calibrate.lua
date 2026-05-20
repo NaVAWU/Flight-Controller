@@ -115,6 +115,7 @@ local function binarySearchHover(liftoffRSC, rsc, binaryRow)
         result = math.floor((lo + hi) / 2)
     end
 
+    print("")   -- advance cursor past binary status line
     return result
 end
 
