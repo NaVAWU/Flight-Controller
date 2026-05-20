@@ -8,8 +8,9 @@ local Sensors = require("sensors")
 -- ── Constants ────────────────────────────────────────────────
 local RAMP_INTERVAL    = 0.35  -- seconds per RSC step during ramp
 local SAMPLES_PER_STEP = 5     -- velocity readings averaged per ramp step
-local LIFT_THRESHOLD   = 0.5   -- m/s average velocity = confirmed liftoff
-local SUSTAIN_NEEDED   = 4     -- consecutive steps that must stay above threshold
+local LIFT_THRESHOLD   = 0.05  -- m/s: catch first movement, not sustained climb
+local SUSTAIN_NEEDED   = 2     -- consecutive steps above threshold to confirm liftoff
+local ALTITUDE_GUARD   = 3     -- blocks: force liftoff detection if island rises this far
 
 local STEP_METRES      = 8     -- altitude change for each PID test
 local TEST_TIMEOUT     = 22    -- seconds allowed for island to reach step target
@@ -88,6 +89,7 @@ print("")
 write(("  RSC:   0  vel: +0.000  [0/%d]"):format(SUSTAIN_NEEDED))
 local _, statusRow = term.getCursorPos()
 
+local startAlt    = Sensors.getHeight()
 local hoverRSC    = nil
 local sustainCount = 0
 local peakRSC     = 0
@@ -97,11 +99,12 @@ for speed = 0, 256 do
     sleep(RAMP_INTERVAL)
     peakRSC = speed
 
-    local vel = avgVel(SAMPLES_PER_STEP)
-    statusLine(statusRow, "  RSC: %3d  vel: %+.3f  [%d/%d]",
-               speed, vel, sustainCount, SUSTAIN_NEEDED)
+    local vel   = avgVel(SAMPLES_PER_STEP)
+    local risen = Sensors.getHeight() - startAlt
+    statusLine(statusRow, "  RSC: %3d  vel: %+.3f  risen: %.1fm  [%d/%d]",
+               speed, vel, risen, sustainCount, SUSTAIN_NEEDED)
 
-    if vel >= LIFT_THRESHOLD then
+    if vel >= LIFT_THRESHOLD or risen >= ALTITUDE_GUARD then
         sustainCount = sustainCount + 1
         if sustainCount >= SUSTAIN_NEEDED then
             hoverRSC = math.max(0, speed - SUSTAIN_NEEDED + 1)
